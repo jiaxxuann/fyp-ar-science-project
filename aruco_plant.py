@@ -3,7 +3,7 @@ import numpy as np
 from picamera2 import Picamera2
 import time
 import math
-from core.entities import WaterSystem
+from entities import WaterSystem
 
 # --- 1. Load Calibration ---
 with np.load('assets/camera_params.npz') as data:
