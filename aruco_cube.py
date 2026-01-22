@@ -4,12 +4,12 @@ from picamera2 import Picamera2
 import time
 
 # --- 1. Load Calibration ---
-with np.load('camera_params.npz') as data:
+with np.load('assets/camera_params.npz') as data:
     mtx, dist = data['mtx'], data['dist']
 
 # --- 2. Setup ArUco (Legacy) ---
 aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
-parameters = cv2.aruco.DetectorParameters_create()
+parameters = cv2.aruco.DetectorParameters()
 MARKER_SIZE = 0.01  # 1cm
 
 def draw_cube(img, rvec, tvec, mtx, dist):
