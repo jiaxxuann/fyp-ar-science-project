@@ -1,0 +1,14 @@
+# Environments
+ar_project_env/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Local settings
+.vscode/
+
+# Assets you might not want to track (optional)
+calibrations/
