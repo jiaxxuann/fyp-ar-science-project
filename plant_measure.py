@@ -28,6 +28,23 @@ def calculate_plant_height(mask, ratio):
             
     return None, None
 
+def calculate_height_from_marker(corners, bbox_top_y, pixel_to_cm_ratio):
+    """
+    Calculates height from the ArUco marker surface to the top of the plant.
+    """
+    # 1. Find the center Y coordinate of the ArUco marker
+    # We average the Y coordinates of all 4 corners
+    marker_y_center = np.mean([c[1] for c in corners[0]])
+    
+    # 2. Calculate pixel distance from marker center to plant top
+    # In OpenCV, Y increases downwards, so (Marker Y - Top Y) = Height
+    height_px = marker_y_center - bbox_top_y
+    
+    # 3. Convert to cm
+    actual_height_cm = height_px * pixel_to_cm_ratio
+    
+    return max(0, actual_height_cm) # Ensure we don't return negative height
+
 def get_pose(corners, mtx, dist, marker_size):
     """
     Performs 3D Pose Estimation to find where the marker is in space.
