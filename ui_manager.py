@@ -87,17 +87,24 @@ class UIManager:
         
         # Color logic (CHANGE ACCORDINGLY!)
         if label == "Water":
-            if percent < 0.2 or percent > 0.8: color = (0, 0, 255) # Red for alert
-            color = (0, 255, 0) # Default Green
+            if percent < 0.2 or percent > 0.8: 
+                color = (0, 0, 255) # Red for alert
+            else: 
+                color = (0, 255, 0) # Default Green
         if label == "Light":
-            if percent < 0.2 or percent > 0.8: color = (0, 0, 255) # Red for alert
-            color = (0, 255, 0) # Default Green
+            if percent < 0.2 or percent > 0.8: 
+                color = (0, 0, 255) # Red for alert
+            else:
+                color = (0, 255, 0) # Default Green
         if label == "Temp":
-            if percent < 0.2 or percent > 0.8: color = (0, 0, 255) # Red for alert
-            color = (0, 255, 0) # Default Green
+            if percent < 0.2 or percent > 0.8: 
+                color = (0, 0, 255) # Red for alert
+            else:
+                color = (0, 255, 0) # Default Green
         if label == "Humid":
-            if percent < 0.2 or percent > 0.8: color = (0, 0, 255) # Red for alert
-            color = (0, 255, 0) # Default Green
+            if percent < 0.2 or percent > 0.8: 
+                color = (0, 0, 255) # Red for alert
+            else: color = (0, 255, 0) # Default Green
         
         # Draw Fill
         fill_w = int(width * percent)
