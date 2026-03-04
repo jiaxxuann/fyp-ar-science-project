@@ -86,12 +86,12 @@ try:
 
             if height:
                 # Use the bbox to draw the rectangle
-                x, y, w, h = bbox
-                cv2.rectangle(frame_bgr, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                bbox_x, bbox_y, bbox_w, bbox_h = bbox
+                cv2.rectangle(frame_bgr, (bbox_x, bbox_y), (bbox_x + bbox_w, bbox_y + bbox_h), (0, 255, 0), 2)
                         
                 print(f"Plant is {height:.2f} cm tall")
 
-                real_height = plant_measure.calculate_height_from_marker(corners, y, ratio)
+                real_height = plant_measure.calculate_height_from_marker(corners, bbox_y, ratio)
                 print(f"Height from ground is {real_height:.2f} cm")
             
             if current_mode == "MAIN":
@@ -117,6 +117,7 @@ try:
                 print("--- DEBUG: Inside Microscope Mode ---")
             elif current_mode == "GROWTH":
                 print("--- DEBUG: Inside Growth Mode ---")
+
             elif current_mode == "CLIMATE":
                 print("--- DEBUG: Inside CLimate Simulation Mode ---")
 
