@@ -1,3 +1,4 @@
+import time
 import cv2
 import numpy as np
 from picamera2 import Picamera2
@@ -8,17 +9,21 @@ from core import vision
 from ui_manager import UIManager
 from core.particles import ParticleSystem  # Our new parameterized system
 
-# 1. INITIALIZATION
+# ==========================================
+# 1. HARDWARE & SYSTEM INITIALIZATION
+# ==========================================
+
+# Turns on camera and loads calibration matrix
 picam2 = Picamera2()
 cam_config = picam2.create_preview_configuration(main={"format": "RGB888", "size": (640, 480)})
 picam2.configure(cam_config)
 picam2.start()
 
-# Load Camera Calibration
+# Loads camera calibration
 with np.load('assets/camera_params.npz') as data:
     mtx, dist = data['mtx'], data['dist']
 
-# Setup Graphics Tools & ArUco API
+# Graphics tools & ArUco API setup
 ps = ParticleSystem()
 detector = cv2.aruco.ArucoDetector(
     cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50), 
@@ -27,22 +32,36 @@ detector = cv2.aruco.ArucoDetector(
 
 ui = UIManager()
 current_mode = "MAIN"
+w = 640 # global fallback for initial mouse clicks
+
+# Sensor polling setup
+last_sensor_update = 0
+sensor_interval = 2.0
+sensor_values = {
+    'water': 800, #hardware.get_moisture(),
+    'light': 500, #hardware.get_lux(),
+    'temp': 15, #hardware.get_temp(),
+    'hum': 2 #hardware.get_humidity()
+}
+
+# ==========================================
+# 2. EVENT LISTENERS
+# ==========================================
 
 def on_mouse(event, x, y, flags, param):
-    global current_mode
+    global current_mode, w
     if event == cv2.EVENT_LBUTTONDOWN:
+        # Check sidebar
         new_mode = ui.handle_click(x, y, w)
         if new_mode:
             current_mode = new_mode
-
-        if current_mode != "MICRO":
-            ui.active_zoom_state = None 
-            return # Exit the function so we don't trigger AR buttons accidentally
+            if current_mode != "MICRO":
+                ui.active_zoom_state = None 
+            return # exit the function so users don't trigger AR buttons accidentally
         
-    # If the click was NOT on the sidebar, check AR buttons
-    if current_mode == "MICRO":
-        # Pass the x, y coordinates to the UI Manager to do the math
-        ui.check_ar_button_click(x, y)
+        # Check AR buttons (only in MICRO mode)
+        if current_mode == "MICRO":
+            ui.check_ar_button_click(x, y)
 
 cv2.namedWindow("AR Science Lab", cv2.WND_PROP_FULLSCREEN)
 cv2.setWindowProperty("AR Science Lab", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
@@ -50,36 +69,49 @@ cv2.setMouseCallback("AR Science Lab", on_mouse)
 
 print("AR Science Project: SYSTEM LIVE")
 
+# ==========================================
+# 3. MAIN EXECUTION LOOP
+# ==========================================
+
 try:
     while True:
-        # A. INPUT: Grab frame
+        # A. INPUT: Grab frame from camera
         frame = picam2.capture_array()
         frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-        h, w, c = frame_bgr.shape
-        #print(frame_bgr.shape)
-        
-        # B. VISION LOGIC: Find the plant
-        mask = vision.get_green_mask(frame_bgr, config.LOWER_GREEN, config.UPPER_GREEN)
+        frame_h, frame_w, frame_c = frame_bgr.shape
+        w = frame_w # use a global w for the mouse callback
 
-        # C. MEASUREMENT: Get ratio and height
+        # B. REST FRAME VARIABLES: Clears out data once plant moved away
+        bbox = None
+        height = None
+        success = None
+
+        # C. SENSOR POLLING: Ensures hardware data is read every 2 seconds
+        # current_time = time.time()
+
+        # if current_time - last_sensor_update >= sensor_interval:
+            
+        #     print("--- DEBUG: Polling Hardware Sensors ---")
+            
+        #     # Update the dictionary with real hardware calls
+        #     # (e.g., reading your analog soil moisture via the MCP3009)
+        #     sensor_values['water'] = hardware.get_moisture() 
+        #     sensor_values['light'] = hardware.get_lux()
+        #     sensor_values['temp']  = hardware.get_temp()
+        #     sensor_values['hum']   = hardware.get_humidity()
+            
+        #     # Reset the stopwatch
+        #     last_sensor_update = current_time
+
+        # D. COMPUTER VISION PROCESSING: Get ratio and height
         corners, ids, rejected = detector.detectMarkers(frame_bgr)
 
-        # D. SENSOR: Update sensor readings
-        sensor_values = {
-            'water': 800, #hardware.get_moisture(),
-            'light': 500, #hardware.get_lux(),
-            'temp': 15, #hardware.get_temp(),
-            'hum': 2 #hardware.get_humidity()
-        }
-
-        if ids is None:
-            # Marker and bbox are missing
+        if ids is None: # if marker is missing
             print("--- DEBUG: No plant detected! ---")
-            cv2.putText(frame_bgr, "Point camera at pot to see the plant!", (10, 50), 
-                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-
-        if ids is not None:
-            # Calculate real-world scale
+            ui.draw_notification(frame_bgr, "Point camera at pot to see the plant!")
+        else: # if marker is present
+            # Runs green mask to find plant's shape
+            mask = vision.get_green_mask(frame_bgr, config.LOWER_GREEN, config.UPPER_GREEN)
             ratio = plant_measure.calculate_ratio(corners, config.ARUCO_MARKER_SIZE)
             height, bbox = plant_measure.calculate_plant_height(mask, ratio)            
             # 3D pose for particles
@@ -88,63 +120,57 @@ try:
                 mtx, 
                 dist,
                 config.ARUCO_MARKER_SIZE)
-            
-            # find camera width in cm
-            # frame_width_cm = 680 * ratio
-            # print(f"The camera is currently seeing an area {frame_width_cm:.2f} cm wide")
 
-            if height:
+            if height and bbox is not None:
                 # Use the bbox to draw the rectangle
                 bbox_x, bbox_y, bbox_w, bbox_h = bbox
                 cv2.rectangle(frame_bgr, (bbox_x, bbox_y), (bbox_x + bbox_w, bbox_y + bbox_h), (0, 255, 0), 2)
-                        
-                print(f"Plant is {height:.2f} cm tall")
-
                 real_height = plant_measure.calculate_height_from_marker(corners, bbox_y, ratio)
+                
+                print(f"Plant is {height:.2f} cm tall")
                 print(f"Height from ground is {real_height:.2f} cm")
             
-            if current_mode == "MAIN":
-                
-                print("--- DEBUG: Inside Main Photosynthesis Mode ---")
+                # E. STATE MACHINE LOGIC
+                # Uses 3D coordinates to emit and render animated physics particles for water and gas
+                if current_mode == "MAIN":
                     
-                if success and height:
-                    #E. ANIMATION: Emit based on height/state 
-                    right_edge = (w / 2) * ratio
-                    left_edge = -right_edge
+                    print("--- DEBUG: Inside Main Photosynthesis Mode ---")
+                        
+                    if success:
+                        # Animation emit based on height/state 
+                        right_edge = (w / 2) * ratio
+                        left_edge = -right_edge
+                        ps.emit(origin_3d=[0, config.ARUCO_MARKER_SIZE/2, 3], p_type="water", target_height=real_height-6, count=1)
+                        ps.emit(origin_3d=[right_edge/2, config.ARUCO_MARKER_SIZE/2, real_height], p_type="oxygen", target_height=0, count=1)
+                        ps.emit(origin_3d=[left_edge/2, config.ARUCO_MARKER_SIZE/2, real_height], p_type="co2", target_height=0, count=1)
 
-                    ps.emit(origin_3d=[0, config.ARUCO_MARKER_SIZE/2, 3], p_type="water", target_height=real_height-6, count=1)
-                    ps.emit(origin_3d=[right_edge/2, config.ARUCO_MARKER_SIZE/2, real_height], p_type="oxygen", target_height=0, count=1)
-                    ps.emit(origin_3d=[left_edge/2, config.ARUCO_MARKER_SIZE/2, real_height], p_type="co2", target_height=0, count=1)
+                        # Draw AR elements
+                        ps.update_and_draw(frame_bgr, mtx, dist, rvec, tvec)
+                        cv2.drawFrameAxes(frame_bgr, mtx, dist, rvec, tvec, 0.03)
 
-                    #F. DRAW AR ELEMENTS
-                    ps.update_and_draw(frame_bgr, mtx, dist, rvec, tvec)
-                    cv2.drawFrameAxes(frame_bgr, mtx, dist, rvec, tvec, 0.03)
+                        print(f"Frame size: {frame_bgr.shape[1]}x{frame_bgr.shape[0]}, Menu Width: {ui.menu_width}")
 
-                    print(f"Frame size: {frame_bgr.shape[1]}x{frame_bgr.shape[0]}, Menu Width: {ui.menu_width}")
+                # Projects interactive AR nodes onto bbox coordinates
+                elif current_mode == "MICRO":
+                    print("--- DEBUG: Inside Microscope Mode ---")
 
-            elif current_mode == "MICRO":
-                print("--- DEBUG: Inside Microscope Mode ---")
+                    # Only call the zoom function if a plant (bbox) is actually seen
+                    if len(bbox) == 4:
+                        ui.draw_ar_buttons(frame_bgr, bbox)
+                    
+                        # Check internal state of UI Manager
+                        if ui.active_zoom_state is not None:
+                            ui.draw_zoom_window(frame_bgr, bbox, ui.active_zoom_state)
 
-                # Only call the zoom function if a plant (bbox) is actually seen
-                if bbox is not None and len(bbox) == 4:
-                    ui.draw_ar_buttons(frame_bgr, bbox)
-                
-                    # check internal state of UI Manager
-                    if ui.active_zoom_state is not None:
-                        ui.draw_zoom_window(frame_bgr, bbox, ui.active_zoom_state)
+                elif current_mode == "GROWTH":
+                    print("--- DEBUG: Inside Growth Mode ---")
 
-            elif current_mode == "GROWTH":
-                print("--- DEBUG: Inside Growth Mode ---")
+                elif current_mode == "CLIMATE":
+                    print("--- DEBUG: Inside CLimate Simulation Mode ---")
 
-            elif current_mode == "CLIMATE":
-                print("--- DEBUG: Inside CLimate Simulation Mode ---")
-
-        # G. DISPLAY
-        # UI drawn last to ensure its on top of everything else
+        # F. RENDER UI LAYERS: drawn last to stay on top
         ui.draw_hud(frame_bgr, sensor_values)
-
         ui.draw_sidebar(frame_bgr, current_mode) 
-
         cv2.imshow("AR Science Lab", frame_bgr)
 
         # This line is REQUIRED for the window to actually refresh
