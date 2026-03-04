@@ -35,6 +35,15 @@ def on_mouse(event, x, y, flags, param):
         if new_mode:
             current_mode = new_mode
 
+        if current_mode != "MICRO":
+            ui.active_zoom_state = None 
+            return # Exit the function so we don't trigger AR buttons accidentally
+        
+    # If the click was NOT on the sidebar, check AR buttons
+    if current_mode == "MICRO":
+        # Pass the x, y coordinates to the UI Manager to do the math
+        ui.check_ar_button_click(x, y)
+
 cv2.namedWindow("AR Science Lab", cv2.WND_PROP_FULLSCREEN)
 cv2.setWindowProperty("AR Science Lab", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
 cv2.setMouseCallback("AR Science Lab", on_mouse)
@@ -115,6 +124,15 @@ try:
 
             elif current_mode == "MICRO":
                 print("--- DEBUG: Inside Microscope Mode ---")
+
+                # Only call the zoom function if a plant (bbox) is actually seen
+                if bbox is not None and len(bbox) == 4:
+                    ui.draw_ar_buttons(frame_bgr, bbox)
+                
+                    # check internal state of UI Manager
+                    if ui.active_zoom_state is not None:
+                        ui.draw_zoom_window(frame_bgr, bbox, ui.active_zoom_state)
+
             elif current_mode == "GROWTH":
                 print("--- DEBUG: Inside Growth Mode ---")
 
