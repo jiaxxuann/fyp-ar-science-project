@@ -7,7 +7,7 @@ import config
 import plant_measure
 from core import vision
 from ui_manager import UIManager
-from core.particles import ParticleSystem  # Our new parameterized system
+from core.particles import ParticleSystem
 
 # ==========================================
 # 1. HARDWARE & SYSTEM INITIALIZATION
@@ -73,6 +73,9 @@ print("AR Science Project: SYSTEM LIVE")
 # 3. MAIN EXECUTION LOOP
 # ==========================================
 
+marker_last_seen_time = time.time()
+SEARCH_TIMEOUT = 0.5 # Wait half a second before showing the "Searching" text
+
 try:
     while True:
         # A. INPUT: Grab frame from camera
@@ -106,14 +109,15 @@ try:
         # D. COMPUTER VISION PROCESSING: Get ratio and height
         corners, ids, rejected = detector.detectMarkers(frame_bgr)
 
-        if ids is None: # if marker is missing
-            print("--- DEBUG: No plant detected! ---")
-            ui.draw_notification(frame_bgr, "Point camera at pot to see the plant!")
-        else: # if marker is present
+        if ids is not None: # if marker is present
+            # Update stopwatch when plant is seen
+            marker_last_seen_time = time.time()
+            
             # Runs green mask to find plant's shape
             mask = vision.get_green_mask(frame_bgr, config.LOWER_GREEN, config.UPPER_GREEN)
             ratio = plant_measure.calculate_ratio(corners, config.ARUCO_MARKER_SIZE)
             height, bbox = plant_measure.calculate_plant_height(mask, ratio)            
+            
             # 3D pose for particles
             success, rvec, tvec = plant_measure.get_pose(
                 corners, 
@@ -167,6 +171,12 @@ try:
 
                 elif current_mode == "CLIMATE":
                     print("--- DEBUG: Inside CLimate Simulation Mode ---")
+
+        else: # if marker is missing
+            # Check the stopwatch to see if it has been missing for more than 0.5 seconds
+            if time.time() - marker_last_seen_time > SEARCH_TIMEOUT:
+                print("--- DEBUG: No plant detected! ---")
+                ui.draw_notification(frame_bgr, "Point camera at pot to see the plant!")
 
         # F. RENDER UI LAYERS: drawn last to stay on top
         ui.draw_hud(frame_bgr, sensor_values)
