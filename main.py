@@ -54,6 +54,9 @@ def on_mouse(event, x, y, flags, param):
         # Check sidebar
         new_mode = ui.handle_click(x, y, w)
         if new_mode:
+            if current_mode != new_mode:
+                ps.particles = []
+            
             current_mode = new_mode
             if current_mode != "MICRO":
                 ui.active_zoom_state = None 
@@ -61,7 +64,14 @@ def on_mouse(event, x, y, flags, param):
         
         # Check AR buttons (only in MICRO mode)
         if current_mode == "MICRO":
+            old_state = ui.active_zoom_state
+
             ui.check_ar_button_click(x, y)
+
+            # If the user clicked a different button (e.g., changed from WATER to GAS)
+            if ui.active_zoom_state != old_state:
+                # Instantly clear the physics engine's memory!
+                ps.particles = [] 
 
 cv2.namedWindow("AR Science Lab", cv2.WND_PROP_FULLSCREEN)
 cv2.setWindowProperty("AR Science Lab", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
@@ -131,8 +141,8 @@ try:
                 cv2.rectangle(frame_bgr, (bbox_x, bbox_y), (bbox_x + bbox_w, bbox_y + bbox_h), (0, 255, 0), 2)
                 real_height = plant_measure.calculate_height_from_marker(corners, bbox_y, ratio)
                 
-                print(f"Plant is {height:.2f} cm tall")
-                print(f"Height from ground is {real_height:.2f} cm")
+                # print(f"Plant is {height:.2f} cm tall")
+                # print(f"Height from ground is {real_height:.2f} cm")
             
                 # E. STATE MACHINE LOGIC
                 # Uses 3D coordinates to emit and render animated physics particles for water and gas
@@ -160,11 +170,33 @@ try:
 
                     # Only call the zoom function if a plant (bbox) is actually seen
                     if len(bbox) == 4:
+                        # Keep a clean copy for the zoom crop (avoid capturing UI overlays)
+                        clean_frame = frame_bgr.copy()
                         ui.draw_ar_buttons(frame_bgr, bbox)
                     
-                        # Check internal state of UI Manager
+                        # Emit particles based on button click
+                        if ui.active_zoom_state == "WATER":
+                            # Start at ArUco marker (0, y_offset, 3) and flow up to real_height
+                            ps.emit(origin_3d=[0, config.ARUCO_MARKER_SIZE/2, 3], p_type="water", target_height=real_height, count=1)
+                            
+                        elif ui.active_zoom_state == "GAS":
+                            # Target the center of the upper canopy
+                            canopy_center_x = 0  # Centered directly above the ArUco marker
+                            canopy_center_z = real_height * 0.95  # 95% up the plant's height
+                            
+                            # Emit MICRO Oxygen (Spawns at center, flows OUT)
+                            ps.emit(origin_3d=[canopy_center_x, config.ARUCO_MARKER_SIZE/2, canopy_center_z], p_type="micro_o2", count=1)
+                            
+                            # Emit MICRO CO2 (Spawns away from center, flows IN)
+                            ps.emit(origin_3d=[canopy_center_x, config.ARUCO_MARKER_SIZE/2, canopy_center_z], p_type="micro_co2", count=1)
+
+                        # Draw the 3d particles onto main frame
                         if ui.active_zoom_state is not None:
-                            ui.draw_zoom_window(frame_bgr, bbox, ui.active_zoom_state)
+                            # Updates the physics and paints the particles onto the clean_frame
+                            ps.update_and_draw(clean_frame, mtx, dist, rvec, tvec)
+
+                            # Crop and magnify (This will now capture the particles just drawn)
+                            ui.draw_zoom_window(frame_bgr, bbox, ui.active_zoom_state, source_frame=clean_frame)
 
                 elif current_mode == "GROWTH":
                     print("--- DEBUG: Inside Growth Mode ---")

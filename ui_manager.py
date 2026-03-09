@@ -1,6 +1,9 @@
 import cv2
-import numpy as np
 import math
+import random
+from collections import deque
+
+import numpy as np
 
 class UIManager:
     def __init__(self):
@@ -18,6 +21,9 @@ class UIManager:
         self.current_stem_btn = (0, 0)
         self.btn_radius = 25
         self.active_zoom_state = None  # "GAS", "WATER", or None
+
+        self.micro_particles_gas = deque(maxlen=150)
+        self.micro_particles_water = deque(maxlen=150)
 
     # ==========================================
     # BLOCK 1: GLOBAL UI & MENUS
@@ -178,42 +184,69 @@ class UIManager:
                 self.active_zoom_state = None
                 print("UI Manager: Window Closed")
     
-    def draw_zoom_window(self, frame, bbox, zoom_state):
+    def draw_zoom_window(self, frame, bbox, zoom_state, source_frame=None):
         # Get plant coordinates
-        x, y, bw, bh = bbox # bbox = [x, y, w, h]
-        
-        # Add some 'padding' so the zoom isn't too tight
-        pad = 20
-        y1, y2 = max(0, y - pad), min(frame.shape[0], y + bh + pad)
-        x1, x2 = max(0, x - pad), min(frame.shape[1], x + bw + pad)
-        
-        # Crop the image
-        crop = frame[y1:y2, x1:x2]
+        x, y, bw, bh = bbox  # bbox = [x, y, w, h]
+        src = source_frame if source_frame is not None else frame
+        frame_h, frame_w = src.shape[:2]
+
+        # Add some padding so the zoom isn't too tight
+        pad = 15
+
+        # Focus on different plant regions based on zoom state
+        if zoom_state == "GAS":
+            # Leaves: crop top ~50% of plant (leaf area)
+            y1 = max(0, y - pad)
+            y2 = min(frame_h, y + int(bh * 0.55) + pad)
+        elif zoom_state == "WATER":
+            # Stem: crop bottom ~55% of plant (stem area)
+            y1 = max(0, y + int(bh * 0.45) - pad)
+            y2 = min(frame_h, y + bh + pad)
+        else:
+            # Fallback: full plant
+            y1 = max(0, y - pad)
+            y2 = min(frame_h, y + bh + pad)
+
+        x1 = max(0, x - pad)
+        x2 = min(frame_w, x + bw + pad)
+
+        # Crop from the source frame (clean camera image)
+        crop = src[y1:y2, x1:x2]
         
         if crop.size > 0:
-            # Resize to a fixed window size (e.g., 200x200)
+            # Resize without distortion (preserve aspect ratio, fill window via center-crop)
             zoom_size = 200
-            zoomed_part = cv2.resize(crop, (zoom_size, zoom_size), interpolation=cv2.INTER_LINEAR)
-            
-            # TODO: Draw the particle animations onto 'zoomed part' right here!
+            crop_h, crop_w = crop.shape[:2]
+            if crop_h == 0 or crop_w == 0:
+                return
 
-            # Define location of window (e.g., Top Left corner)
-            off_y, off_x = 30, 30 # Position: y_offset:y_offset+height, x_offset:x_offset+width
+            # Cover scaling: ensure the resized image fully covers the square,
+            # then center-crop down to (zoom_size x zoom_size)
+            scale = max(zoom_size / crop_w, zoom_size / crop_h)
+            new_w = max(zoom_size, int(crop_w * scale))
+            new_h = max(zoom_size, int(crop_h * scale))
+
+            resized = cv2.resize(crop, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+
+            x0 = max(0, (new_w - zoom_size) // 2)
+            y0 = max(0, (new_h - zoom_size) // 2)
+            zoomed_part = resized[y0:y0 + zoom_size, x0:x0 + zoom_size]
             
-            # Dynamic Window Theme based on State
-            if zoom_state == "GAS":
-                title_color = (100, 255, 100)
-                title_text = "O2 / CO2 EXCHANGE"
-            elif zoom_state == "WATER":
-                title_color = (255, 100, 100)
-                title_text = "WATER TRANSPORT"
-            else:
-                title_color = (255, 255, 255)
-                title_text = "MICROSCOPE VIEW"
-            
-            # Draw window border and title
+            # Draw window frame + title, then overlay zoomed_part back to frame
+            off_y, off_x = 30, 30
             cv2.rectangle(frame, (off_x-5, off_y-5), (off_x+zoom_size+5, off_y+zoom_size+5), (255, 255, 255), -1)
-            cv2.putText(frame, "MICROSCOPE VIEW", (off_x, off_y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+
+            if zoom_state == "GAS":
+                title_text = "O2 / CO2 EXCHANGE"
+                title_color = (0, 255, 0)
+            elif zoom_state == "WATER":
+                title_text = "WATER TRANSPORT"
+                title_color = (0, 0, 255)
+            else:
+                title_text = "MICROSCOPE VIEW"
+                title_color = (255, 255, 255)
+
+            cv2.putText(frame, title_text, (off_x, off_y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, title_color, 1)
 
             # Overlay the zoomed part back onto the main frame
             frame[off_y:off_y+zoom_size, off_x:off_x+zoom_size] = zoomed_part
