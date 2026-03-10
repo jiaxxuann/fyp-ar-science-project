@@ -8,6 +8,7 @@ import plant_measure
 from core import vision
 from ui_manager import UIManager
 from core.particles import ParticleSystem
+from core.growth import GrowthPredictor
 
 # ==========================================
 # 1. HARDWARE & SYSTEM INITIALIZATION
@@ -25,12 +26,14 @@ with np.load('assets/camera_params.npz') as data:
 
 # Graphics tools & ArUco API setup
 ps = ParticleSystem()
+ui = UIManager()
+predictor = GrowthPredictor()
+
 detector = cv2.aruco.ArucoDetector(
     cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50), 
     cv2.aruco.DetectorParameters()
 )
 
-ui = UIManager()
 current_mode = "MAIN"
 w = 640 # global fallback for initial mouse clicks
 
@@ -41,7 +44,7 @@ sensor_values = {
     'water': 800, #hardware.get_moisture(),
     'light': 500, #hardware.get_lux(),
     'temp': 15, #hardware.get_temp(),
-    'hum': 2 #hardware.get_humidity()
+    'humid': 2 #hardware.get_humidity()
 }
 
 # ==========================================
@@ -211,7 +214,7 @@ try:
                 ui.draw_notification(frame_bgr, "Point camera at pot to see the plant!")
 
         # F. RENDER UI LAYERS: drawn last to stay on top
-        ui.draw_hud(frame_bgr, sensor_values)
+        ui.draw_hud(frame_bgr, sensor_values, predictor)
         ui.draw_sidebar(frame_bgr, current_mode) 
         cv2.imshow("AR Science Lab", frame_bgr)
 

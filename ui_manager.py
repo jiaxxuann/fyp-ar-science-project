@@ -71,7 +71,7 @@ class UIManager:
     # ==========================================
     # BLOCK 2: ENVIRONMENTAL HUD
     # ==========================================    
-    def draw_hud(self, frame, sensor_data):
+    def draw_hud(self, frame, sensor_data, predictor):
         h, w, _ = frame.shape
     
         # HUD dimensions: Background box that fits 4 bars
@@ -89,20 +89,23 @@ class UIManager:
         start_y = h - hud_h + 25 # vertical position for the bars
         row_spacing = 25 # vertical gap between bars
 
+        hw = predictor.hardware_limits
+        th = predictor.thresholds
+
         # Sensor values: Use a list to iterate through them easily
         sensors = [
-            ("Water", sensor_data['water'], 0, 1023, "%"),
-            ("Light", sensor_data['light'], 0, 1000, "lx"),
-            ("Temp", sensor_data['temp'], 0, 50, "C"),
-            ("Humid", sensor_data['hum'], 0, 100, "%") # standard min max
+            ("Water", sensor_data['water'], hw['water'][0], hw['water'][1], hw['water'][2], th['water_min'], th['water_max']),
+            ("Light", sensor_data['light'], hw['light'][0], hw['light'][1], hw['light'][2], th['light_min'], th['light_max']),
+            ("Temp", sensor_data['temp'], hw['temp'][0], hw['temp'][1], hw['temp'][2], th['temp_min'], th['temp_max']),
+            ("Humid", sensor_data['humid'], hw['humid'][0], hw['humid'][1], hw['humid'][2], th['humid_min'], th['humid_max']) # standard min max
         ]
 
         # Sensor bars
-        for i, (label, val, min_v, max_v, unit) in enumerate(sensors):
+        for i, (label, val, min_v, max_v, unit, safe_min, safe_max) in enumerate(sensors):
             y_pos = start_y + (i * row_spacing)
-            self.draw_bar(frame, start_x, y_pos, label, val, min_v, max_v, unit, bar_w)
+            self.draw_bar(frame, start_x, y_pos, label, val, min_v, max_v, unit, bar_w, safe_min, safe_max)
 
-    def draw_bar(self, frame, x, y, label, value, min_v, max_v, unit, width):
+    def draw_bar(self, frame, x, y, label, value, min_v, max_v, unit, width, safe_min, safe_max):
         height = 10
         label_spacing = 45
 
@@ -118,25 +121,10 @@ class UIManager:
         cv2.rectangle(frame, (bar_x, y), (bar_x + width, y + height), (80, 80, 80), -1)
         
         # Color logic: Changes accordingly
-        if label == "Water":
-            if percent < 0.2 or percent > 0.8: 
-                color = (0, 0, 255) # Red for alert
-            else: 
-                color = (0, 255, 0) # Default Green
-        if label == "Light":
-            if percent < 0.2 or percent > 0.8: 
-                color = (0, 0, 255) # Red for alert
-            else:
-                color = (0, 255, 0) # Default Green
-        if label == "Temp":
-            if percent < 0.2 or percent > 0.8: 
-                color = (0, 0, 255) # Red for alert
-            else:
-                color = (0, 255, 0) # Default Green
-        if label == "Humid":
-            if percent < 0.2 or percent > 0.8: 
-                color = (0, 0, 255) # Red for alert
-            else: color = (0, 255, 0) # Default Green
+        if value < safe_min or value > safe_max: 
+            color = (0, 0, 255) # Red for alert
+        else: 
+            color = (0, 255, 0) # Green for healthy
         
         # Draw Fill
         fill_w = int(width * percent)
