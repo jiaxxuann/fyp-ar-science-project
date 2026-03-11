@@ -32,6 +32,8 @@ class GrowthPredictor:
         # 2. Check Light
         if sensor_data['light'] < self.thresholds['light_min']:
             return "WILT", "Needs Sunlight!"
+        if sensor_data['light'] > self.thresholds['light_max']:
+            return "WILT", "Too Much Sunlight!"
         
         # 3. Check Temperature
         if sensor_data['temp'] < self.thresholds['temp_min']:

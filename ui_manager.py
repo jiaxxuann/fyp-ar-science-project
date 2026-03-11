@@ -238,3 +238,76 @@ class UIManager:
 
             # Overlay the zoomed part back onto the main frame
             frame[off_y:off_y+zoom_size, off_x:off_x+zoom_size] = zoomed_part
+
+    # ==========================================
+    # BLOCK 4: GROWTH PREDICTION LOGIC
+    # ==========================================
+    def overlay_transparent(self, background, overlay, x, y):
+        """
+        Overlays a transparent PNG (4 channels) onto a BGR background (3 channels)
+        using optimized NumPy array broadcasting for Raspberry Pi performance.
+        """
+        bg_h, bg_w = background.shape[:2]
+        ol_h, ol_w = overlay.shape[:2]
+
+        # 1. Ignore if the overlay is completely off-screen
+        if x >= bg_w or y >= bg_h or x + ol_w <= 0 or y + ol_h <= 0:
+            return background
+
+        # 2. Calculate safe bounding box coordinates for the background
+        x1 = max(0, x)
+        x2 = min(bg_w, x + ol_w)
+        y1 = max(0, y)
+        y2 = min(bg_h, y + ol_h)
+
+        # 3. Calculate safe bounding box coordinates for the overlay image
+        ol_x1 = max(0, -x)
+        ol_x2 = min(ol_w, bg_w - x)
+        ol_y1 = max(0, -y)
+        ol_y2 = min(ol_h, bg_h - y)
+
+        # 4. Extract the RGB channels and the Alpha channel
+        overlay_crop = overlay[ol_y1:ol_y2, ol_x1:ol_x2]
+        overlay_rgb = overlay_crop[:, :, :3]
+        
+        # Expand dims keeps the alpha mask in 3D shape (h, w, 1) for broadcasting
+        alpha = overlay_crop[:, :, 3:4] / 255.0 
+
+        # 5. Vectorized alpha blending math
+        background_crop = background[y1:y2, x1:x2]
+        background[y1:y2, x1:x2] = (alpha * overlay_rgb + (1.0 - alpha) * background_crop).astype(np.uint8)
+
+        return background
+    
+    def draw_growth_overlay(self, frame, bbox, overlay_img, anim_progress):
+        """
+        Handles the math for animating, resizing, and anchoring the AR leaves.
+        """
+        # Safety check: ensure we have an image and a valid bounding box
+        if overlay_img is None or len(bbox) != 4:
+            return frame
+
+        x, y, bw, bh = bbox
+
+        # 1. Easing Math (Cubic ease-out)
+        ease_p = 1.0 - (1.0 - anim_progress) ** 3
+
+        # 2. Target Sizes
+        orig_h, orig_w = overlay_img.shape[:2]
+        aspect_ratio = orig_h / orig_w
+        target_w = int(bw * 1.5)
+        target_h = int(target_w * aspect_ratio)
+
+        # 3. Apply animation progress (prevent 0-pixel crash)
+        current_w = max(1, int(target_w * ease_p))
+        current_h = max(1, int(target_h * ease_p))
+
+        # 4. Resize
+        resized_overlay = cv2.resize(overlay_img, (current_w, current_h), interpolation=cv2.INTER_AREA)
+
+        # 5. Anchor Math (Align bottom-center)
+        paste_x = int(x + (bw / 2) - (current_w / 2))
+        paste_y = int(y + bh - current_h)
+
+        # 6. Paint and return the frame
+        return self.overlay_transparent(frame, resized_overlay, paste_x, paste_y)

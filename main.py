@@ -29,6 +29,16 @@ ps = ParticleSystem()
 ui = UIManager()
 predictor = GrowthPredictor()
 
+# Load the AR assets with the IMREAD_UNCHANGED flag to preserve the Alpha channel
+# Make sure to create an 'assets' folder in your project directory and put your PNGs there!
+try:
+    healthy_img = cv2.imread('assets/healthy-plant.png', cv2.IMREAD_UNCHANGED)
+    wilting_img = cv2.imread('assets/wilted-plant.png', cv2.IMREAD_UNCHANGED)
+    if healthy_img is None or wilting_img is None:
+        print("WARNING: Could not find PNG assets. Check your file paths.")
+except Exception as e:
+    print(f"Error loading assets: {e}")
+
 detector = cv2.aruco.ArucoDetector(
     cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50), 
     cv2.aruco.DetectorParameters()
@@ -36,6 +46,7 @@ detector = cv2.aruco.ArucoDetector(
 
 current_mode = "MAIN"
 w = 640 # global fallback for initial mouse clicks
+growth_anim_progress = 0.0
 
 # Sensor polling setup
 last_sensor_update = 0
@@ -52,18 +63,22 @@ sensor_values = {
 # ==========================================
 
 def on_mouse(event, x, y, flags, param):
-    global current_mode, w
+    global current_mode, w, growth_anim_progress
     if event == cv2.EVENT_LBUTTONDOWN:
         # Check sidebar
         new_mode = ui.handle_click(x, y, w)
         if new_mode:
             if current_mode != new_mode:
                 ps.particles = []
+
+                if new_mode == "GROWTH":
+                    growth_anim_progress = 0.0
             
             current_mode = new_mode
             if current_mode != "MICRO":
                 ui.active_zoom_state = None 
             return # exit the function so users don't trigger AR buttons accidentally
+
         
         # Check AR buttons (only in MICRO mode)
         if current_mode == "MICRO":
@@ -203,6 +218,57 @@ try:
 
                 elif current_mode == "GROWTH":
                     print("--- DEBUG: Inside Growth Mode ---")
+
+                    if len(bbox) == 4:
+                        x, y, bw, bh = bbox
+                        
+                        # 1. Ask the expert system for the prediction
+                        health_state, diagnosis = predictor.predict_health(sensor_values)
+                        
+                        # 2. Select the correct asset and text color
+                        if health_state == "HEALTHY":
+                            overlay_img = healthy_img
+                            text_color = (0, 255, 0)
+                        else:
+                            overlay_img = wilting_img
+                            text_color = (0, 0, 255)
+
+                        # 3. Advance the animation state
+                        if growth_anim_progress < 1.0:
+                            growth_anim_progress += 0.05 
+                        else:
+                            growth_anim_progress = 1.0
+
+                        # 4. Paint the AR overlay onto the main frame
+                        frame_bgr = ui.draw_growth_overlay(frame_bgr, bbox, overlay_img, growth_anim_progress)
+
+                        # # 3. Dynamic Scaling 
+                        # # Only proceed if the image loaded successfully
+                        # if overlay_img is not None:
+                        #     orig_h, orig_w = overlay_img.shape[:2]
+                        #     aspect_ratio = orig_h / orig_w
+                            
+                        #     # Make the canopy slightly wider than the plant's bounding box
+                        #     new_w = int(bw * 1.5) 
+                        #     new_h = int(new_w * aspect_ratio)
+                            
+                        #     # Resize the PNG
+                        #     resized_overlay = cv2.resize(overlay_img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
+                        #     # 4. Anchor Point Math (Align bottom-center)
+                        #     # Center it horizontally over the plant
+                        #     paste_x = int(x + (bw / 2) - (new_w / 2))
+                        #     # Align the bottom of the PNG with the bottom of the bounding box
+                        #     paste_y = int(y + bh - new_h)
+
+                            # # 5. Paint the AR overlay onto the main frame
+                            # frame_bgr = ui.overlay_transparent(frame_bgr, resized_overlay, paste_x, paste_y)
+
+                        # 5. Draw the educational diagnosis text right above the plant
+                        cv2.putText(frame_bgr, f"Prediction: {health_state}", (x, max(20, y - 40)), 
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, text_color, 2)
+                        cv2.putText(frame_bgr, f"Cause: {diagnosis}", (x, max(45, y - 15)), 
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
 
                 elif current_mode == "CLIMATE":
                     print("--- DEBUG: Inside CLimate Simulation Mode ---")
