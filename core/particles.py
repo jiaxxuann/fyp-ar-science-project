@@ -1,5 +1,6 @@
 import numpy as np
 import random
+import math
 import cv2
 
 class Particle:
@@ -117,18 +118,19 @@ class ParticleSystem:
     def __init__(self):
         self.particles = []
         self.max_particles = 50
+        self.weather_particles = []
 
     def emit(self, origin_3d, p_type, target_height=0, count=1):
         if len(self.particles) < self.max_particles:
             for _ in range(count):
                 self.particles.append(Particle(origin_3d, p_type, target_height))
 
-    def update_and_draw(self, frame, mtx, dist, rvec, tvec):
+    def update_and_draw(self, frame, mtx=None, dist=None, rvec=None, tvec=None):
         # Filter out dead particles
         self.particles = [p for p in self.particles if p.life > 0]
         
-        if not self.particles:
-            return
+        if not self.particles and not self.weather_particles:
+            return frame
 
         # Prepare 3D points for projection
         pts_3d = np.array([p.pos_3d for p in self.particles])
@@ -137,11 +139,11 @@ class ParticleSystem:
         try:
             pts_2d, _ = cv2.projectPoints(pts_3d, rvec, tvec, mtx, dist)
         except cv2.error:
-            return # Skip drawing this frame if projection fails completely
-        
+            pass # Skip drawing 3d frame if projection fails completely but continues to draw 2d frame
         # Get screen boundaries for clamping
         h, w = frame.shape[:2] 
-        
+
+        # ------- 3D AR Particles -------
         for i, p in enumerate(self.particles):
             # Update particle logic (movement, life reduction)
             p.update()
@@ -168,3 +170,77 @@ class ParticleSystem:
                     cv2.circle(frame, center, radius, p.color, -1)
                 except cv2.error:
                     continue # Skip if specific circle drawing fails
+
+        # ------- 2D Weather Particles -------
+        surviving_weather = []
+        
+        for p in self.weather_particles:
+            
+            # --- 1. SPECIAL SNOW WOBBLE ---
+            if p['type'] == 'snow':
+                p['x'] += int(math.sin((p['y'] + p['offset']) / 20.0) * 3)
+                
+            # --- 2. UNIVERSAL MOVEMENT ---
+            p['x'] += p['vx']
+            p['y'] += p['vy']
+            
+            # --- 3. RENDERING ---
+            if p['type'] == 'rain':
+                cv2.line(frame, (int(p['x']), int(p['y'])), 
+                         (int(p['x']), int(p['y'] + p['vy'])), (255, 200, 100), p['size'])
+            elif p['type'] == 'dust':
+                cv2.circle(frame, (int(p['x']), int(p['y'])), p['size'], (100, 150, 255), -1)
+            elif p['type'] == 'snow':
+                cv2.circle(frame, (int(p['x']), int(p['y'])), p['size'], (255, 255, 255), -1)
+            elif p['type'] == 'acid':
+                cv2.line(frame, (int(p['x']), int(p['y'])), 
+                         (int(p['x'] - p['vx']), int(p['y'] + p['vy'])), (50, 200, 150), p['size'])
+
+            # --- 4. GARBAGE COLLECTION ---
+            if -50 <= p['x'] <= w + 50 and -50 <= p['y'] <= h + 50:
+                surviving_weather.append(p)
+
+        self.weather_particles = surviving_weather
+        
+        return frame # to return to frame
+
+    def spawn_weather(self, frame_w, active_env):
+        """Spawns weather particles continuously from the top/sides of the screen."""
+        # CPU Saver: Don't spawn more if we already have enough on screen
+        if len(self.weather_particles) > 100: 
+            return
+
+        # We spawn 2 particles per frame to build the storm up quickly
+        for _ in range(2): 
+            if active_env == "TROPICAL":
+                # RAIN: Fast, straight down
+                self.weather_particles.append({
+                    'x': random.randint(0, frame_w), 'y': -10,
+                    'vx': 0, 'vy': random.randint(15, 25), 
+                    'type': 'rain', 'size': random.randint(2, 4)
+                })
+
+            elif active_env == "DESERT":
+                # DUST: Spawns on the left, blows fast horizontally to the right
+                self.weather_particles.append({
+                    'x': -10, 'y': random.randint(0, int(frame_w * 0.75)), # Assuming h is roughly w * 0.75
+                    'vx': random.randint(8, 15), 'vy': random.randint(-1, 2), 
+                    'type': 'dust', 'size': random.randint(1, 2)
+                })
+            
+            elif active_env == "ARCTIC":
+                # SNOW: Slow down, needs an 'offset' for the sine wave wobble
+                self.weather_particles.append({
+                    'x': random.randint(0, frame_w), 'y': -10,
+                    'vx': 0, 'vy': random.randint(2, 5), 
+                    'type': 'snow', 'size': random.randint(3, 6),
+                    'offset': random.uniform(0, 100)
+                })
+
+            elif active_env == "ACID_RAIN":
+                # ACID: Medium speed, slightly angled
+                self.weather_particles.append({
+                    'x': random.randint(-50, frame_w), 'y': -10,
+                    'vx': random.randint(1, 3), 'vy': random.randint(10, 15), 
+                    'type': 'acid', 'size': random.randint(2, 4)
+                })

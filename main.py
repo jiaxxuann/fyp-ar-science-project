@@ -58,20 +58,31 @@ sensor_values = {
     'humid': 2 #hardware.get_humidity()
 }
 
+# Simulation & Swipe State ---
+sim_modes = ["TROPICAL", "DESERT", "ARCTIC", "ACID_RAIN"]
+current_sim_idx = 0
+is_simulating = False 
+swipe_start_x = 0
+swipe_threshold = 60 # Minimum pixels dragged to count as a swipe
+
 # ==========================================
 # 2. EVENT LISTENERS
 # ==========================================
 
 def on_mouse(event, x, y, flags, param):
-    global current_mode, w, growth_anim_progress
+    global current_mode, w, growth_anim_progress, swipe_start_x, current_sim_idx, sim_modes
+    
+    # Handle mouse press
     if event == cv2.EVENT_LBUTTONDOWN:
+        swipe_start_x = x
+
         # Check sidebar
         new_mode = ui.handle_click(x, y, w)
         if new_mode:
             if current_mode != new_mode:
                 ps.particles = []
 
-                if new_mode == "GROWTH":
+                if new_mode == "GROWTH" or new_mode == "SIMULATION":
                     growth_anim_progress = 0.0
             
             current_mode = new_mode
@@ -79,7 +90,6 @@ def on_mouse(event, x, y, flags, param):
                 ui.active_zoom_state = None 
             return # exit the function so users don't trigger AR buttons accidentally
 
-        
         # Check AR buttons (only in MICRO mode)
         if current_mode == "MICRO":
             old_state = ui.active_zoom_state
@@ -90,6 +100,28 @@ def on_mouse(event, x, y, flags, param):
             if ui.active_zoom_state != old_state:
                 # Instantly clear the physics engine's memory!
                 ps.particles = [] 
+
+    # Handle mouse release
+    elif event == cv2.EVENT_LBUTTONUP:
+        # Only calculate swipes if we are currently in the simulation screen
+        if current_mode == "SIMULATION":
+            delta_x = x - swipe_start_x
+            swipe_threshold = 60 # Pixels moved to trigger a swipe
+            
+            if abs(delta_x) > swipe_threshold:
+                if delta_x > 0:
+                    # Swiped Right -> Previous
+                    current_sim_idx = (current_sim_idx - 1) % len(sim_modes)
+                else:
+                    # Swiped Left -> Next
+                    current_sim_idx = (current_sim_idx + 1) % len(sim_modes)
+                
+                # Reset animation and particles for the new environment transition
+                growth_anim_progress = 0.0 
+                ps.particles = [] 
+                
+                print(f"Swiped! New Environment: {sim_modes[current_sim_idx]}")
+
 
 cv2.namedWindow("AR Science Lab", cv2.WND_PROP_FULLSCREEN)
 cv2.setWindowProperty("AR Science Lab", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
@@ -125,7 +157,7 @@ try:
         #     print("--- DEBUG: Polling Hardware Sensors ---")
             
         #     # Update the dictionary with real hardware calls
-        #     # (e.g., reading your analog soil moisture via the MCP3009)
+        #     # (e.g., reading your analog soil moisture via the MCP3008)
         #     sensor_values['water'] = hardware.get_moisture() 
         #     sensor_values['light'] = hardware.get_lux()
         #     sensor_values['temp']  = hardware.get_temp()
@@ -270,8 +302,43 @@ try:
                         cv2.putText(frame_bgr, f"Cause: {diagnosis}", (x, max(45, y - 15)), 
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
 
-                elif current_mode == "CLIMATE":
-                    print("--- DEBUG: Inside CLimate Simulation Mode ---")
+                elif current_mode == "SIMULATION":
+                    print("--- DEBUG: Inside Climate Simulation Mode ---")
+
+                    active_env = sim_modes[current_sim_idx]
+                    
+                    # 1. Apply the visual atmosphere
+                    frame_bgr = ui.apply_environment_filter(frame_bgr, active_env)
+                    
+                    # 2. Draw the environment title
+                    cv2.putText(frame_bgr, f"ENVIRONMENT: {active_env}", (20, 50), 
+                                cv2.FONT_HERSHEY_DUPLEX, 0.8, (255, 255, 255), 2)
+                    cv2.putText(frame_bgr, "< SWIPE TO EXPLORE >", (20, 80), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (220, 220, 220), 1)
+
+                    # 3. Simulate the Plant's Reaction
+                    if len(bbox) == 4:
+                        # Choose the biological outcome based on the climate
+                        if active_env == "TROPICAL":
+                            leaf_asset = healthy_img
+                        else:
+                            # Desert, Arctic, and Acid Rain all cause stress/wilting
+                            leaf_asset = wilting_img
+                            
+                        # Advance the animation state
+                        if growth_anim_progress < 1.0:
+                            growth_anim_progress += 0.05 
+                        else:
+                            growth_anim_progress = 1.0
+                        
+                        # Draw the actual plant overlay
+                        frame_bgr = ui.draw_growth_overlay(frame_bgr, bbox, leaf_asset, growth_anim_progress)
+
+                    # 4. Trigger the wheather particles
+                    ps.spawn_weather(w, active_env)
+                        
+                    # Draw the AR overlay using the function we built earlier
+                    frame_bgr = ps.update_and_draw(frame_bgr, mtx, dist, rvec, tvec)
 
         else: # if marker is missing
             # Check the stopwatch to see if it has been missing for more than 0.5 seconds

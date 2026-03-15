@@ -14,7 +14,7 @@ class UIManager:
             (20, 80, "Main: Particles", "MAIN"),
             (100, 160, "Microscope", "MICRO"),
             (180, 240, "Growth Predict", "GROWTH"),
-            (260, 320, "Climate Stress", "CLIMATE")]
+            (260, 320, "Climate Stress", "SIMULATION")]
 
         # AR microscope config
         self.current_leaf_btn = (0, 0)
@@ -311,3 +311,25 @@ class UIManager:
 
         # 6. Paint and return the frame
         return self.overlay_transparent(frame, resized_overlay, paste_x, paste_y)
+    
+    # ==========================================
+    # BLOCK 5: CLIMATE STRESS SIMULATION LOGIC
+    # ==========================================
+    def apply_environment_filter(self, frame, mode):
+        """Applies a fast, full-screen color tint based on the simulation mode."""
+        overlay = np.zeros_like(frame, dtype=np.uint8)
+        alpha = 0.25  # Opacity of the tint
+
+        if mode == "TROPICAL":
+            overlay[:] = (40, 200, 40)   # Green tint
+            alpha = 0.15
+        elif mode == "DESERT":
+            overlay[:] = (0, 100, 255)   # Orange/Sand tint
+        elif mode == "ARCTIC":
+            overlay[:] = (255, 180, 100) # Ice Blue tint
+        elif mode == "ACID_RAIN":
+            overlay[:] = (100, 150, 150) # Murky Grey/Yellow
+            alpha = 0.3
+
+        # Blend the tint over the camera feed
+        return cv2.addWeighted(frame, 1.0 - alpha, overlay, alpha, 0)
