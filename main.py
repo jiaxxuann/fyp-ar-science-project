@@ -9,10 +9,40 @@ from core import vision
 from ui_manager import UIManager
 from core.particles import ParticleSystem
 from core.growth import GrowthPredictor
+from hardware import SensorManager
 
 # ==========================================
 # 1. HARDWARE & SYSTEM INITIALIZATION
 # ==========================================
+
+# Initialize the sensors
+print("Waking up sensors...")
+sensor = SensorManager(mock_mode=False) # <--- TOGGLE: True-mock, False-actual
+
+# Initial reading - Grab the raw hardware dictionary
+raw_initial_data = sensor.read_all()
+# Give the DHT22 two seconds to warm up
+time.sleep(2) 
+
+# # Trap the DHT22 if it needs a second to warm up
+# while raw_initial_data['temperature'] == 25.0:
+#     print("Waiting for DHT22 to stabilize...")
+#     time.sleep(2.1)
+#     raw_initial_data = sensor.read_all()
+
+# Map initial data so the UI doesn't crash on frame 1
+sensor_values = {
+    'temp': raw_initial_data['temperature'],
+    'humid': raw_initial_data['humidity'],
+    'light': int(raw_initial_data['light']),
+    'water': raw_initial_data['soil_percent']
+}
+
+# Sensor polling setup
+last_sensor_update = time.time()
+sensor_interval = 2.0 # poll every 2 seconds
+
+print(sensor_values)
 
 # Turns on camera and loads calibration matrix
 picam2 = Picamera2()
@@ -32,9 +62,10 @@ predictor = GrowthPredictor()
 # Load the AR assets with the IMREAD_UNCHANGED flag to preserve the Alpha channel
 # Make sure to create an 'assets' folder in your project directory and put your PNGs there!
 try:
+    flower_img = cv2.imread('assets/flower.png', cv2.IMREAD_UNCHANGED)
     healthy_img = cv2.imread('assets/healthy-plant.png', cv2.IMREAD_UNCHANGED)
     wilting_img = cv2.imread('assets/wilted-plant.png', cv2.IMREAD_UNCHANGED)
-    if healthy_img is None or wilting_img is None:
+    if healthy_img is None or wilting_img is None or flower_img is None:
         print("WARNING: Could not find PNG assets. Check your file paths.")
 except Exception as e:
     print(f"Error loading assets: {e}")
@@ -47,16 +78,6 @@ detector = cv2.aruco.ArucoDetector(
 current_mode = "MAIN"
 w = 640 # global fallback for initial mouse clicks
 growth_anim_progress = 0.0
-
-# Sensor polling setup
-last_sensor_update = 0
-sensor_interval = 2.0
-sensor_values = {
-    'water': 800, #hardware.get_moisture(),
-    'light': 500, #hardware.get_lux(),
-    'temp': 15, #hardware.get_temp(),
-    'humid': 2 #hardware.get_humidity()
-}
 
 # Simulation & Swipe State ---
 sim_modes = ["TROPICAL", "DESERT", "ARCTIC", "ACID_RAIN"]
@@ -150,21 +171,21 @@ try:
         success = None
 
         # C. SENSOR POLLING: Ensures hardware data is read every 2 seconds
-        # current_time = time.time()
+        current_time = time.time()
+        
+        if (current_time - last_sensor_update) >= sensor_interval:
+            
+            # Grab the live dictionary of raw environmental data
+            raw_data = sensor.read_all()
+        
+            # 2. Map the new keys to your old predictor keys
+            sensor_values['temp'] = raw_data['temperature']
+            sensor_values['humid'] = raw_data['humidity']
+            sensor_values['light'] = int(raw_data['light'])
+            sensor_values['water'] = raw_data['soil_percent']
 
-        # if current_time - last_sensor_update >= sensor_interval:
-            
-        #     print("--- DEBUG: Polling Hardware Sensors ---")
-            
-        #     # Update the dictionary with real hardware calls
-        #     # (e.g., reading your analog soil moisture via the MCP3008)
-        #     sensor_values['water'] = hardware.get_moisture() 
-        #     sensor_values['light'] = hardware.get_lux()
-        #     sensor_values['temp']  = hardware.get_temp()
-        #     sensor_values['hum']   = hardware.get_humidity()
-            
-        #     # Reset the stopwatch
-        #     last_sensor_update = current_time
+            # Reset timer
+            last_sensor_update = current_time
 
         # D. COMPUTER VISION PROCESSING: Get ratio and height
         corners, ids, rejected = detector.detectMarkers(frame_bgr)
@@ -204,9 +225,74 @@ try:
                         # Animation emit based on height/state 
                         right_edge = (w / 2) * ratio
                         left_edge = -right_edge
-                        ps.emit(origin_3d=[0, config.ARUCO_MARKER_SIZE/2, 3], p_type="water", target_height=real_height-6, count=1)
-                        ps.emit(origin_3d=[right_edge/2, config.ARUCO_MARKER_SIZE/2, real_height], p_type="oxygen", target_height=0, count=1)
-                        ps.emit(origin_3d=[left_edge/2, config.ARUCO_MARKER_SIZE/2, real_height], p_type="co2", target_height=0, count=1)
+
+                        # Grab all current environment data
+                        current_water = sensor_values['water']
+                        current_light = sensor_values['light']
+                        current_temp = sensor_values['temp']
+                        current_humid = sensor_values['humid']
+                        
+                        # Grab the safe thresholds from your predictor
+                        water_min = predictor.thresholds['water_min']
+                        water_max = predictor.thresholds['water_max']
+                        light_min = predictor.thresholds['light_min']
+                        light_max = predictor.thresholds['light_max']
+                        temp_min = predictor.thresholds['temp_min']
+                        temp_max = predictor.thresholds['temp_max']
+                        humid_min = predictor.thresholds['humid_min']
+                        humid_max = predictor.thresholds['humid_max']
+
+                        # Advance the animation state
+                        if growth_anim_progress < 1.0:
+                            growth_anim_progress += 0.05 
+                        else:
+                            growth_anim_progress = 1.0
+
+                        if water_min <= current_water <= water_max:
+                            # water flows up
+                            ps.emit(origin_3d=[0, config.ARUCO_MARKER_SIZE/2, 3], p_type="water", target_height=real_height-6, count=1)
+                        
+                        is_photosynthesizing = (
+                            (water_min <= current_water <= water_max) and 
+                            (light_min <= current_light <= light_max) and 
+                            (temp_min <= current_temp <= temp_max) and 
+                            (humid_min <= current_humid <= humid_max)
+                        )
+                        
+                        if is_photosynthesizing:
+                            # oxygen out
+                            ps.emit(origin_3d=[right_edge/2, config.ARUCO_MARKER_SIZE/2, real_height], p_type="oxygen", target_height=0, count=1)
+                            # co2 in
+                            ps.emit(origin_3d=[left_edge/2, config.ARUCO_MARKER_SIZE/2, real_height], p_type="co2", target_height=0, count=1)
+                           
+                            # produce flower
+                            if flower_img is not None:
+                                # A. Unpack the original plant bounding box
+                                bx, by, bw, bh = bbox
+                                
+                                # B. Set your scale multiplier (0.4 = 40% of plant width)
+                                scale_multiplier = 0.4
+                                
+                                # C. Calculate the new width and proportional height
+                                flower_w = int(bw * scale_multiplier)
+                                aspect_ratio = flower_img.shape[0] / flower_img.shape[1]
+                                flower_h = int(flower_w * aspect_ratio)
+                                
+                                # D. Calculate the perfect top-center position
+                                flower_x = int(bx + (bw / 2) - (flower_w / 2))
+                                
+                                # Position it right at the top of the plant (by), 
+                                # and nudge it up slightly by subtracting a little height
+                                flower_y = int(by) #  by - (flower_h / 4) to nudge flower up
+                                
+                                # E. Pack it into a new tuple
+                                flower_bbox = (flower_x, flower_y, flower_w, flower_h)
+
+                                frame_bgr = ui.draw_growth_overlay(frame_bgr, flower_bbox, flower_img, growth_anim_progress)
+
+                        else:
+                            # Optional: what if photosynthesis stops?
+                            pass
 
                         # Draw AR elements
                         ps.update_and_draw(frame_bgr, mtx, dist, rvec, tvec)

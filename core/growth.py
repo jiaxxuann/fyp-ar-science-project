@@ -3,17 +3,17 @@ class GrowthPredictor:
         # Thresholds for a standard house plant (e.g., a bean or pothos)
         # TODO: change thresholds to more accurate values!
         self.thresholds = {
-            'water_min': 300,   'water_max': 850, # min: <20%, max: >80%
-            'light_min': 150,   'light_max': 800,
-            'temp_min': 15.0,   'temp_max': 32.0,
-            'humid_min': 20,    'humid_max': 80
+            'water_min': 40,   'water_max': 80, # min: <20%, max: >80%
+            'light_min': 800,   'light_max': 5000,
+            'temp_min': 18.0,   'temp_max': 30.0,
+            'humid_min': 40.0,    'humid_max': 80.0
         }
 
         # Hardware UI scales (Min, Max, Unit) for drawing the bars
         self.hardware_limits = {
-            'water': (0, 1023, " %"),
-            'light': (0, 1000, " lx"),
-            'temp': (0, 50, " C"),
+            'water': (0, 100, " %"),
+            'light': (0, 10000, " lx"), # actual range: 0-54612
+            'temp': (-40, 80, " C"),
             'humid': (0, 100, " %")
         }
 
