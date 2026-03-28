@@ -434,8 +434,9 @@ try:
                 ui.draw_notification(frame_bgr, "Point camera at pot to see the plant!")
 
         # F. RENDER UI LAYERS: drawn last to stay on top
+        
         frame_hd = cv2.resize(frame_bgr, (1280, 960), interpolation=cv2.INTER_LINEAR)
-        ui.draw_hud(frame_bgr, sensor_values, predictor)
+        frame_hd = ui.draw_hud(frame_hd, sensor_values, predictor)
         frame_hd = ui.draw_sidebar(frame_hd, current_mode)
         cv2.imshow("AR Science Lab", frame_hd)
 

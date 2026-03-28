@@ -61,7 +61,7 @@ class UIManager:
             bg_height = frame.shape[0] # 960
             bg_width = frame.shape[1] # 1280
 
-            sidebar_x = bg_width - 190
+            sidebar_x = bg_width - 180
             sidebar_y = int((bg_height - img_height) / 2)
 
             # We must return the frame so the main loop gets the updated image!
@@ -92,7 +92,7 @@ class UIManager:
     def handle_click(self, x, y, frame_width, frame_height):
         """Checks if a mouse click hit any of our invisible Figma buttons."""
         
-        sidebar_x = frame_width - 190
+        sidebar_x = frame_width - 180
         sidebar_y = int((frame_height - self.sidebar_h) / 2)
 
         if sidebar_x + 42 <= x <= (sidebar_x + self.sidebar_w - 42):
@@ -124,23 +124,30 @@ class UIManager:
     # BLOCK 2: ENVIRONMENTAL HUD
     # ==========================================    
     def draw_hud(self, frame, sensor_data, predictor):
-        h, w, _ = frame.shape
-    
-        # HUD dimensions: Background box that fits 4 bars
-        hud_w = 260
-        hud_h = 130
+        h, w = frame.shape[:2]
+
+        # 1. Calculate HUD placement (Bottom Left corner)
+        if hasattr(self, 'hud_bg') and self.hud_bg is not None:
+            hud_h, hud_w = self.hud_bg.shape[:2]
+        else:
+            hud_h, hud_w = 130, 260 # Fallback sizes
         
-        # Background: Draw a semi-transparent background box at the bottom left
-        overlay = frame.copy()
-        cv2.rectangle(overlay, (0, h - hud_h), (hud_w, h), (30, 30, 30), -1)
-        cv2.addWeighted(overlay, 0.6, frame, 0.4, 0, frame)
+        # hud coordinates (bottom-left)
+        hud_x = 20 # 20px from left edge
+        hud_y = h - hud_h - 20 # start at bottom (960), step up by image height, and 20px for padding
+
+        # 2. Draw the Figma Background first
+        if hasattr(self, 'hud_bg') and self.hud_bg is not None:
+            frame = self.overlay_transparent(frame, self.hud_bg, hud_x, hud_y)
 
         # Bar configuration
-        bar_w = 140
-        start_x = 20
-        start_y = h - hud_h + 25 # vertical position for the bars
-        row_spacing = 25 # vertical gap between bars
+        bar_w = 270
+        row_spacing = 56 # vertical gap between bars
 
+        # bar coordinates (in hud)
+        start_x = hud_x + 20
+        start_y = hud_y + 40 #h - hud_h + 25 # vertical position for the bars
+        
         hw = predictor.hardware_limits
         th = predictor.thresholds
 
@@ -155,22 +162,40 @@ class UIManager:
         # Sensor bars
         for i, (label, val, min_v, max_v, unit, safe_min, safe_max) in enumerate(sensors):
             y_pos = start_y + (i * row_spacing)
-            self.draw_bar(frame, start_x, y_pos, label, val, min_v, max_v, unit, bar_w, safe_min, safe_max)
+            self.draw_bar(frame, start_x, y_pos, val, min_v, max_v, unit, bar_w, safe_min, safe_max)
 
-    def draw_bar(self, frame, x, y, label, value, min_v, max_v, unit, width, safe_min, safe_max):
-        height = 10
-        label_spacing = 45
+        return frame
+
+    def draw_bar(self, frame, x, y, value, min_v, max_v, unit, width, safe_min, safe_max):
+        height = 20 # thickness of colored bar
+        label_spacing = 150
 
         # Calculate percentage
         percent = (value - min_v) / (max_v - min_v)
         percent = max(0, min(1, percent))
         
-        # Draw Label
-        cv2.putText(frame, f"{label}", (x, y + 10), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (200, 200, 200), 1)
-        
         # Draw Background Track
         bar_x = x + label_spacing
-        cv2.rectangle(frame, (bar_x, y), (bar_x + width, y + height), (80, 80, 80), -1)
+        # cv2.rectangle(frame, (bar_x, y), (bar_x + width, y + height), (80, 80, 80), -1)
+
+        # Make it transparernt
+        # Define the exact box coordinates
+        x1, y1 = bar_x, y
+        x2, y2 = bar_x + width, y + height
+        
+        # Safety check to ensure we don't draw off-screen
+        if x1 >= 0 and y1 >= 0 and x2 <= frame.shape[1] and y2 <= frame.shape[0]:
+            
+            # Extract just the tiny slice of the image where the bar goes (ROI)
+            roi = frame[y1:y2, x1:x2]
+            
+            # Create a solid grey block the exact same size as the ROI
+            import numpy as np # Make sure this is imported at the top of your file!
+            track_color = np.full(roi.shape, (80, 80, 80), dtype=np.uint8)
+            
+            # Blend them together (alpha = 0.4 means 40% opacity)
+            alpha = 0.4
+            cv2.addWeighted(track_color, alpha, roi, 1.0 - alpha, 0, roi)
         
         # Color logic: Changes accordingly
         if value < safe_min or value > safe_max: 
@@ -183,8 +208,8 @@ class UIManager:
         cv2.rectangle(frame, (bar_x, y), (bar_x + fill_w, y + height), color, -1)
 
         # Draw Value Text: On the RIGHT of the bar
-        cv2.putText(frame, f"{value}{unit}", (bar_x + width + 5, y + 10), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.35, (180, 180, 180), 1)
+        cv2.putText(frame, f"{value}{unit}", (bar_x + width + 10, y + 15), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2) # size, color, thickness
     
     # ==========================================
     # BLOCK 3: AR MICROSCOPE LOGIC
