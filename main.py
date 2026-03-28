@@ -76,7 +76,8 @@ detector = cv2.aruco.ArucoDetector(
 )
 
 current_mode = "MAIN"
-w = 640 # global fallback for initial mouse clicks
+DISPLAY_W = 1280 # global fallback for initial mouse clicks
+DISPLAY_H = 960
 growth_anim_progress = 0.0
 
 # Simulation & Swipe State ---
@@ -91,14 +92,14 @@ swipe_threshold = 60 # Minimum pixels dragged to count as a swipe
 # ==========================================
 
 def on_mouse(event, x, y, flags, param):
-    global current_mode, w, growth_anim_progress, swipe_start_x, current_sim_idx, sim_modes
+    global current_mode, DISPLAY_W, DISPLAY_H, growth_anim_progress, swipe_start_x, current_sim_idx, sim_modes
     
     # Handle mouse press
     if event == cv2.EVENT_LBUTTONDOWN:
         swipe_start_x = x
 
         # Check sidebar
-        new_mode = ui.handle_click(x, y, w)
+        new_mode = ui.handle_click(x, y, DISPLAY_W, DISPLAY_H)
         if new_mode:
             if current_mode != new_mode:
                 ps.particles = []
@@ -433,9 +434,10 @@ try:
                 ui.draw_notification(frame_bgr, "Point camera at pot to see the plant!")
 
         # F. RENDER UI LAYERS: drawn last to stay on top
+        frame_hd = cv2.resize(frame_bgr, (1280, 960), interpolation=cv2.INTER_LINEAR)
         ui.draw_hud(frame_bgr, sensor_values, predictor)
-        ui.draw_sidebar(frame_bgr, current_mode) 
-        cv2.imshow("AR Science Lab", frame_bgr)
+        frame_hd = ui.draw_sidebar(frame_hd, current_mode)
+        cv2.imshow("AR Science Lab", frame_hd)
 
         # This line is REQUIRED for the window to actually refresh
         if cv2.waitKey(1) & 0xFF == ord('q'):

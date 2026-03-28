@@ -7,14 +7,24 @@ import numpy as np
 
 class UIManager:
     def __init__(self):
-        # Sidebar config
-        self.menu_width = 220
-        # Define button areas: [y_start, y_end, label, mode_name]
-        self.buttons = [
-            (20, 80, "Main: Particles", "MAIN"),
-            (100, 160, "Microscope", "MICRO"),
-            (180, 240, "Growth Predict", "GROWTH"),
-            (260, 320, "Climate Stress", "SIMULATION")]
+        self.sidebars = {}
+        try:
+            self.sidebars['MAIN'] = cv2.imread('assets/sidebar-main.png', cv2.IMREAD_UNCHANGED)
+            self.sidebars['MICRO'] = cv2.imread('assets/sidebar-micro.png', cv2.IMREAD_UNCHANGED)
+            self.sidebars['GROWTH'] = cv2.imread('assets/sidebar-growth.png', cv2.IMREAD_UNCHANGED)
+            self.sidebars['SIMULATION'] = cv2.imread('assets/sidebar-climate.png', cv2.IMREAD_UNCHANGED)
+            self.hud_bg = cv2.imread('assets/hud.png', cv2.IMREAD_UNCHANGED)
+            print("Successfully loaded Figma pngs!")
+        except Exception as e:
+            print("Error loading Figma sidebars: {e}")
+
+        # Calculate and save the exact position of the sidebar
+        self.sidebar_h = self.sidebars['MAIN'].shape[0] # height of sidebar
+        self.sidebar_w = self.sidebars['MAIN'].shape[1] # width of sidebar
+
+        # DEBUGGING
+        main_shape = self.sidebars['MAIN'].shape
+        print(f"DEBUG: The true exported size of MAIN is Height: {main_shape[0]}, Width: {main_shape[1]}")
 
         # AR microscope config
         self.current_leaf_btn = (0, 0)
@@ -38,34 +48,76 @@ class UIManager:
         cv2.putText(frame, text, position, cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2) # draw text
         
     def draw_sidebar(self, frame, current_mode):
-        h, w, _ = frame.shape
-        start_x = w - self.menu_width
-        overlay = frame.copy() # Draw sidebar background
+        """Draws the pre-designed Figma sidebar based on the active mode."""
+        
+        # 1. Grab the correct pre-designed PNG from our dictionary
+        # If for some reason the mode isn't found, default to 'MAIN'
+        active_img = self.sidebars.get(current_mode, self.sidebars.get('MAIN'))
 
-        # Background
-        cv2.rectangle(overlay, (start_x, 0), (w, h), (40, 40, 40), -1)
+        # 2. Paste it onto the left side of the screen (x=0, y=0)
+        if active_img is not None:
+            img_height = active_img.shape[0]
 
-        # Buttons
-        for y1, y2, label, mode in self.buttons:
-            # Highlight active button
-            color = (0, 200, 0) if mode == current_mode else (100, 100, 100)
-            # Draw button rect
-            cv2.rectangle(overlay, (start_x + 10, y1), (w - 10, y2), color, -1)
-            # Draw white border for better visibility
-            cv2.rectangle(overlay, (start_x + 10, y1), (w - 10, y2), (255, 255, 255), 1)
-            # Draw text
-            cv2.putText(overlay, label, (start_x + 20, y1 + 35), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+            bg_height = frame.shape[0] # 960
+            bg_width = frame.shape[1] # 1280
+
+            sidebar_x = bg_width - 190
+            sidebar_y = int((bg_height - img_height) / 2)
+
+            # We must return the frame so the main loop gets the updated image!
+            frame = self.overlay_transparent(frame, active_img, sidebar_x, sidebar_y)
             
-        # Blend the overlay onto the original frame
-        cv2.addWeighted(overlay, 0.8, frame, 0.2, 0, frame)
+            # ==========================================
+            # --- DEBUG MODE: DRAW VISUAL HITBOXES ---
+            # ==========================================
+            # cv2.rectangle(frame, 
+            #   (sidebar_x, sidebar_y), 
+            #   (sidebar_x + self.sidebar_w, sidebar_y + self.sidebar_h), 
+            #   (255, 255, 0), 2)
 
-    def handle_click(self, x, y, frame_width):
-        # Checks if the click is within the sidebar menu
-        if x > frame_width - self.menu_width:
-            for y1, y2, label, mode in self.buttons:
-                if y1 <= y <= y2:
-                    return mode
+            # # Button 1: MAIN (Red Box)
+            # cv2.rectangle(frame, (sidebar_x + 42, sidebar_y + 47), (sidebar_x + self.sidebar_w - 42, sidebar_y + 139), (0, 0, 255), 2)
+            
+            # # Button 2: MICRO (Green Box)
+            # cv2.rectangle(frame, (sidebar_x, sidebar_y + 157), (sidebar_x + self.sidebar_w, sidebar_y + 249), (0, 255, 0), 2)
+            
+            # # Button 3: GROWTH (Blue Box)
+            # cv2.rectangle(frame, (sidebar_x, sidebar_y + 267), (sidebar_x + self.sidebar_w, sidebar_y + 359), (255, 0, 0), 2)
+            
+            # # Button 4: SIMULATION (Yellow Box)
+            # cv2.rectangle(frame, (sidebar_x, sidebar_y + 377), (sidebar_x + self.sidebar_w, sidebar_y + 469), (0, 255, 255), 2)
+            # ==========================================
+        return frame
+
+    def handle_click(self, x, y, frame_width, frame_height):
+        """Checks if a mouse click hit any of our invisible Figma buttons."""
+        
+        sidebar_x = frame_width - 190
+        sidebar_y = int((frame_height - self.sidebar_h) / 2)
+
+        if sidebar_x + 42 <= x <= (sidebar_x + self.sidebar_w - 42):
+            
+            # Convert screen click to Figma 'Local' click
+            local_y = y - sidebar_y
+            
+            # Use the exact Y coordinates measured in Figma + 20 invisible padding
+            if 47 <= local_y <= 139:
+                print("Main Particles Mode Clicked!")
+                return "MAIN"
+                
+            elif 157 <= local_y <= 249:
+                print("Microscope Mode Clicked!")
+                return "MICRO"
+                
+            elif 267 <= local_y <= 359:
+                print("Growth Mode Clicked!")
+                return "GROWTH"
+                
+            elif 377 <= local_y <= 469:
+                print("Simulation Mode Clicked!")
+                return "SIMULATION"
+
+        # If clicked somewhere else on the screen, do nothing
         return None
 
     # ==========================================
