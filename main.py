@@ -199,7 +199,9 @@ try:
             # Runs green mask to find plant's shape
             mask = vision.get_green_mask(frame_bgr, config.LOWER_GREEN, config.UPPER_GREEN)
             ratio = plant_measure.calculate_ratio(corners, config.ARUCO_MARKER_SIZE)
-            height, bbox = plant_measure.calculate_plant_height(mask, ratio)            
+            height, bbox = plant_measure.calculate_plant_height(mask, ratio) 
+
+            ui.update_stable_bbox(bbox)          
             
             # 3D pose for particles
             success, rvec, tvec = plant_measure.get_pose(
@@ -211,7 +213,7 @@ try:
             if height and bbox is not None:
                 # Use the bbox to draw the rectangle
                 bbox_x, bbox_y, bbox_w, bbox_h = bbox
-                cv2.rectangle(frame_bgr, (bbox_x, bbox_y), (bbox_x + bbox_w, bbox_y + bbox_h), (0, 255, 0), 2)
+                #cv2.rectangle(frame_bgr, (bbox_x, bbox_y), (bbox_x + bbox_w, bbox_y + bbox_h), (0, 255, 0), 2)
                 real_height = plant_measure.calculate_height_from_marker(corners, bbox_y, ratio)
                 
                 # print(f"Plant is {height:.2f} cm tall")
@@ -268,9 +270,9 @@ try:
                             ps.emit(origin_3d=[left_edge/2, config.ARUCO_MARKER_SIZE/2, real_height], p_type="co2", target_height=0, count=1)
                            
                             # produce flower
-                            if flower_img is not None:
+                            if flower_img is not None and ui.stable_bbox is not None:
                                 # A. Unpack the original plant bounding box
-                                bx, by, bw, bh = bbox
+                                bx, by, bw, bh = ui.stable_bbox
                                 
                                 # B. Set your scale multiplier (0.4 = 40% of plant width)
                                 scale_multiplier = 0.4
@@ -334,13 +336,13 @@ try:
                             ps.update_and_draw(clean_frame, mtx, dist, rvec, tvec)
 
                             # Crop and magnify (This will now capture the particles just drawn)
-                            ui.draw_zoom_window(frame_bgr, bbox, ui.active_zoom_state, source_frame=clean_frame)
+                            ui.draw_zoom_window(frame_bgr, ui.stable_bbox, ui.active_zoom_state, source_frame=clean_frame)
 
                 elif current_mode == "GROWTH":
                     print("--- DEBUG: Inside Growth Mode ---")
 
                     if len(bbox) == 4:
-                        x, y, bw, bh = bbox
+                        x, y, bw, bh = map(int, ui.stable_bbox)
                         
                         # 1. Ask the expert system for the prediction
                         health_state, diagnosis = predictor.predict_health(sensor_values)
@@ -360,7 +362,7 @@ try:
                             growth_anim_progress = 1.0
 
                         # 4. Paint the AR overlay onto the main frame
-                        frame_bgr = ui.draw_growth_overlay(frame_bgr, bbox, overlay_img, growth_anim_progress)
+                        frame_bgr = ui.draw_growth_overlay(frame_bgr, ui.stable_bbox, overlay_img, growth_anim_progress)
 
                         # # 3. Dynamic Scaling 
                         # # Only proceed if the image loaded successfully
@@ -405,13 +407,8 @@ try:
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (220, 220, 220), 1)
 
                     # 3. Simulate the Plant's Reaction
-                    if len(bbox) == 4:
-                        # Choose the biological outcome based on the climate
-                        if active_env == "TROPICAL":
-                            leaf_asset = healthy_img
-                        else:
-                            # Desert, Arctic, and Acid Rain all cause stress/wilting
-                            leaf_asset = wilting_img
+                    if ui.stable_bbox is not None:
+                        leaf_asset = healthy_img if active_env == "TROPICAL" else wilting_img
                             
                         # Advance the animation state
                         if growth_anim_progress < 1.0:
@@ -420,7 +417,7 @@ try:
                             growth_anim_progress = 1.0
                         
                         # Draw the actual plant overlay
-                        frame_bgr = ui.draw_growth_overlay(frame_bgr, bbox, leaf_asset, growth_anim_progress)
+                        frame_bgr = ui.draw_growth_overlay(frame_bgr, ui.stable_bbox, leaf_asset, growth_anim_progress)
 
                     # 4. Trigger the wheather particles
                     ps.spawn_weather(w, active_env)
@@ -433,6 +430,7 @@ try:
             if time.time() - marker_last_seen_time > SEARCH_TIMEOUT:
                 print("--- DEBUG: No plant detected! ---")
                 ui.draw_notification(frame_bgr, "Point camera at pot to see the plant!")
+                ui.stable_bbox = None
 
         # F. RENDER UI LAYERS: drawn last to stay on top
         

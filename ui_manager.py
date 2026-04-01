@@ -7,6 +7,10 @@ import numpy as np
 
 class UIManager:
     def __init__(self):
+        # stabilise bbox
+        self.stable_bbox = None
+        self.smooth_factor = 0.2  # Lower = smoother/slower, Higher = snappier/shakier
+
         self.sidebars = {}
         try:
             self.sidebars['MAIN'] = cv2.imread('assets/sidebar-main.png', cv2.IMREAD_UNCHANGED)
@@ -35,6 +39,19 @@ class UIManager:
         self.micro_particles_gas = deque(maxlen=150)
         self.micro_particles_water = deque(maxlen=150)
 
+    def update_stable_bbox(self, current_bbox):
+        if current_bbox is None:
+            self.stable_bbox = None
+            return
+        
+        if self.stable_bbox is None:
+            # First time seeing the plant? Use current coordinates
+            self.stable_bbox = list(current_bbox)
+        else:
+            # Apply the smoothing filter (LERP)
+            for i in range(4):
+                self.stable_bbox[i] = (self.stable_bbox[i] * (1 - self.smooth_factor)) + (current_bbox[i] * self.smooth_factor)
+
     # ==========================================
     # BLOCK 1: GLOBAL UI & MENUS
     # ==========================================
@@ -44,7 +61,7 @@ class UIManager:
         bg_rect = ((position[0] - 5, position[1] + 5), 
                    (position[0] + text_size[0] + 5, position[1] - text_size[1] - 5))
         
-        cv2.rectangle(frame, bg_rect[0], bg_rect[1], (0, 0, 0), -1)
+        # cv2.rectangle(frame, bg_rect[0], bg_rect[1], (0, 0, 0), -1)
         cv2.putText(frame, text, position, cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2) # draw text
         
     def draw_sidebar(self, frame, current_mode):
@@ -216,11 +233,16 @@ class UIManager:
     # ==========================================
     # Modify drawing function to update 'self' variables
     def draw_ar_buttons(self, frame, bbox):
-            x, y, w, h = bbox
+        # SMOOTHING LOGIC: If we don't have a stable box yet, start with the current one
+        if self.stable_bbox is not None:
+            sx, sy, sw, sh = map(int, self.stable_bbox)
+
+            # 2. Use the STABLE coordinates for all button math
+            sx, sy, sw, sh = map(int, self.stable_bbox)
             
             # Anchor UI based on bounding box proportions: Update the class attributes directly
-            self.current_stem_btn = (x + (w // 2), y + int(h * 0.85))
-            self.current_leaf_btn = (x + (w // 2), y + int(h * 0.25))
+            self.current_stem_btn = (sx + (sw // 2), sy + int(sh * 0.85))
+            self.current_leaf_btn = (sx + (sw // 2), sy + int(sh * 0.25))
             
             # Draw Leaf Button (Gas)
             cv2.circle(frame, self.current_leaf_btn, self.btn_radius + 5, (0, 255, 0), 2)
@@ -258,7 +280,8 @@ class UIManager:
     
     def draw_zoom_window(self, frame, bbox, zoom_state, source_frame=None):
         # Get plant coordinates
-        x, y, bw, bh = bbox  # bbox = [x, y, w, h]
+        x, y, bw, bh = map(int, bbox)  # bbox = [x, y, w, h]
+
         src = source_frame if source_frame is not None else frame
         frame_h, frame_w = src.shape[:2]
 
