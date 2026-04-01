@@ -24,12 +24,6 @@ raw_initial_data = sensor.read_all()
 # Give the DHT22 two seconds to warm up
 time.sleep(2) 
 
-# # Trap the DHT22 if it needs a second to warm up
-# while raw_initial_data['temperature'] == 25.0:
-#     print("Waiting for DHT22 to stabilize...")
-#     time.sleep(2.1)
-#     raw_initial_data = sensor.read_all()
-
 # Map initial data so the UI doesn't crash on frame 1
 sensor_values = {
     'temp': raw_initial_data['temperature'],
@@ -94,6 +88,13 @@ swipe_threshold = 60 # Minimum pixels dragged to count as a swipe
 def on_mouse(event, x, y, flags, param):
     global current_mode, DISPLAY_W, DISPLAY_H, growth_anim_progress, swipe_start_x, current_sim_idx, sim_modes
     
+    # ==========================================
+    # THE TRANSLATION FIX
+    # ==========================================
+    # Shrink the 1280x960 mouse click down to the 640x480 original resolution
+    original_frame_x = int(x / 2)
+    original_frame_y = int(y / 2)
+
     # Handle mouse press
     if event == cv2.EVENT_LBUTTONDOWN:
         swipe_start_x = x
@@ -116,7 +117,7 @@ def on_mouse(event, x, y, flags, param):
         if current_mode == "MICRO":
             old_state = ui.active_zoom_state
 
-            ui.check_ar_button_click(x, y)
+            ui.check_ar_button_click(original_frame_x, original_frame_y)
 
             # If the user clicked a different button (e.g., changed from WATER to GAS)
             if ui.active_zoom_state != old_state:
@@ -299,7 +300,7 @@ try:
                         ps.update_and_draw(frame_bgr, mtx, dist, rvec, tvec)
                         cv2.drawFrameAxes(frame_bgr, mtx, dist, rvec, tvec, 0.03)
 
-                        print(f"Frame size: {frame_bgr.shape[1]}x{frame_bgr.shape[0]}, Menu Width: {ui.menu_width}")
+                        # print(f"Frame size: {frame_bgr.shape[1]}x{frame_bgr.shape[0]}, Menu Width: {ui.menu_width}")
 
                 # Projects interactive AR nodes onto bbox coordinates
                 elif current_mode == "MICRO":

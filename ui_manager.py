@@ -230,6 +230,13 @@ class UIManager:
             cv2.circle(frame, self.current_stem_btn, self.btn_radius + 5, (255, 0, 0), 2)
             cv2.circle(frame, self.current_stem_btn, self.btn_radius, (200, 0, 0), -1)
 
+            # ==========================================
+            # DEBUG MODE: DRAW THE INVISIBLE HITBOXES
+            # ==========================================
+            # # Drawing a thin, bright magenta circle to represent the "fat finger" zone
+            # cv2.circle(frame, self.current_leaf_btn, hitbox_radius, (255, 0, 255), 1) 
+            # cv2.circle(frame, self.current_stem_btn, hitbox_radius, (255, 0, 255), 1) 
+
     def check_ar_button_click(self, x, y):
             # Checks if a floating AR node was clicked on the plant
             dist_to_leaf = math.hypot(x - self.current_leaf_btn[0], y - self.current_leaf_btn[1])
