@@ -31,9 +31,10 @@ The system is built on Python 3 and runs within an isolated virtual environment 
 Ensure that both I2C and SPI protocols are enabled on your Raspberry Pi:
 ```bash
 sudo raspi-config
-# Navigate to Interface Options -> Enable I2C
-# Navigate to Interface Options -> Enable SPI
-# Reboot the system
+# Navigate to Interface Options -> Enable I2C (Required for BH1750)
+# Navigate to Interface Options -> Enable SPI (Required for MCP3008 ADC)
+# Navigate to Interface Options -> Enable Camera (Required for ArUco tracking)
+# Select "Finish" and Reboot the system
 ```
 ### 2. Setup Virtual Environment
 ```bash
