@@ -5,7 +5,7 @@ class GrowthPredictor:
         self.thresholds = {
             'water_min': 40,   'water_max': 80, # min: <20%, max: >80%
             'light_min': 800,   'light_max': 5000,
-            'temp_min': 18.0,   'temp_max': 30.0,
+            'temp_min': 18.0,   'temp_max': 35.0,
             'humid_min': 40.0,    'humid_max': 80.0
         }
 
