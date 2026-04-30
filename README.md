@@ -42,7 +42,15 @@ source ar_project_env/bin/activate
 ```
 
 ### 3. Install Required Packages
-Install the required OpenCV (with contrib for ArUco) and hardware abstraction libraries:
+The system requires several libraries for computer vision processing and hardware abstraction. You can install these either individually or using the provided requirements file.  
+
+**Option A: Automated Installation (Recommended)**
+Ensure you are in the project root directory where requirements.txt is located, then run:
+```bash
+pip install -r requirements.txt
+```
+**Option B: Manual Individual Installation**
+If you prefer to install each dependency separately within your virtual environment, execute the following:
 ```bash
 pip install opencv-contrib-python
 pip install PyQt5
@@ -53,7 +61,7 @@ pip install adafruit-circuitpython-mcp3xxx
 
 ## Running the Application
 1. Ensure the Raspberry Pi, PiCamera2, and LCD display are securely connected.
-2. Verify your hardware wiring against the breadboard schematic (MCP3008 to SPI pins, BH1750 to I2C pins, DHT22 to standard GPIO).
+2. Verify your hardware wiring against the breadboard schematic (MCP3008 to SPI pins, BH1750 to I2C pins, DHT22 to standard GPIO). <img width="300" height="292" alt="circuit_image" src="https://github.com/user-attachments/assets/c699e276-806a-4199-a37d-7240d42fdf85" />
 3. Ensure the camera has a clear, well-lit view of both the physical plant and the ArUco tracking marker.
 4. Activate the virtual environment and execute the main application:
 ```bash
